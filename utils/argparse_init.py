@@ -55,7 +55,7 @@ def init_parse_argparse_default_params(parser, dataset_name=None, arch=None):
     task_name = parser.parse_known_args()[0].task_name
 
     ## Dataset and augmentations parameters
-    DATASET_OPTIONS = {"shape_corr": ["surreal"], "complition": []}
+    DATASET_OPTIONS = {"shape_corr": ["FAUST-r"], "complition": []}
     parser.add_argument(
         "--dataset_name",
         type=str,
@@ -105,10 +105,10 @@ def init_parse_argparse_default_params(parser, dataset_name=None, arch=None):
         "--batch_size", type=int, default={"complition": 128, "shape_corr": 4}[task_name], help="Number of samples in batch"
     )
     parser.add_argument(
-        "--train_batch_size", type=int, default=8, help="Number of samples in train batch"
+        "--train_batch_size", type=int, default=4, help="Number of samples in train batch"
     )
     parser.add_argument(
-        "--val_batch_size", type=int, default=8, help="Number of samples in val batch"
+        "--val_batch_size", type=int, default=1, help="Number of samples in val batch"
     )
     parser.add_argument(
         "--test_batch_size", type=int, default=1, help="Number of samples in test batch"
@@ -116,6 +116,9 @@ def init_parse_argparse_default_params(parser, dataset_name=None, arch=None):
     parser.add_argument(
         "--max_epochs", default={"complition": 200, "shape_corr": 50}[task_name], type=int, help="Number of epochs to train"
     )
+    parser.add_argument(
+        "--val_test", default=3, type=int, help="Number of epochs to test geodesic error during validation"
+    ) 
     parser.add_argument(
         "--lr", "--learning_rate", type=float, default={"complition": 5e-4, "shape_corr": 1e-3}[task_name], help="Learning rate"
     )

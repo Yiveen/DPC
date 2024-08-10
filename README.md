@@ -47,8 +47,9 @@ pip install ./pointnet2_ops_lib/.
 # Training
 
 For training run(Have embeded the ULRSSM dataset to DPC structure!!)
+--dataset_name here is just given name you want
 ``` 
-python DPC/train_point_corr.py  --opt config/config_dpc/dpc_example.yaml 
+python DPC/train_point_corr.py  --opt config/config_dpc/dpc_example.yaml --dataset_name faustr
 ```
 The code is based on [PyTorch-Lightning](https://pytorch-lightning.readthedocs.io/en/latest/), all PL [hyperparameters](https://pytorch-lightning.readthedocs.io/en/latest/common/trainer.html) are supported. 
 (`limit_train/val/test_batches, check_val_every_n_epoch` etc.)

@@ -81,6 +81,54 @@ class ShapeCorrTemplate(LightningModule):
 
         output = collections.OrderedDict({"loss": loss})
         return output
+    
+    def validation_step_single(self, batch, batch_idx, mode="train"):
+        """
+        Lightning calls this inside the training loop with the 
+        data from the training dataloader passed in as `batch`.
+        """
+        self.losses = {}
+        self.tracks = {}
+        self.hparams.batch_idx = batch_idx
+        self.hparams.mode = mode
+        self.batch = batch
+
+        # forward pass
+        # self.log_weights_norm()
+        batch = self(batch)
+
+
+        if len(self.losses) > 0:
+            loss = sum(self.losses.values()).mean()
+            self.tracks[f"{mode}_tot_loss"] = loss
+        else:
+            loss = None
+        
+        if self.current_epoch % self.hparams.val_test == 0:
+            label, pinput1, input2, ratio_list, soft_labels, dist = self.extract_labels_for_test(self.batch)
+
+            source = {'verts': pinput1, "id": self.batch['first']['name']}
+            target = {'verts': input2, "id": self.batch['second']['name']}
+            batch = {'first': source, 'second': target}
+            batch = self(batch)
+            p = batch["P_normalized"].clone()
+
+
+            _ = self.calculate_geodesic_error(label, p, dist, track_dict=self.tracks, hparams=self.hparams)
+            _ = self.compute_acc_dpc(label, ratio_list, soft_labels, p, track_dict=self.tracks)
+            _ = self.plot_pck(self.tracks)
+            # _ = self.compute_acc(label, ratio_list, soft_labels, p,input2,track_dict=self.tracks,hparams=self.hparams)
+
+
+        all = {k: to_numpy(v) for k, v in {**self.tracks, **self.losses}.items()}
+        getattr(self, f"{mode}_logs", None).append(all)
+
+        if (batch_idx % (self.hparams.log_every_n_steps if self.hparams.mode != 'test' else 1) == 0):
+            for k, v in all.items():
+                self.logger.experiment.add_scalar(f"{k}/step", v,self.global_step)
+
+        output = collections.OrderedDict({"loss": loss})
+        return output
 
     def vis_iter(self,):
         return (self.hparams.batch_idx % eval(f"self.hparams.{self.hparams.mode}_vis_interval") == 0) and self.hparams.show_vis
@@ -92,8 +140,8 @@ class ShapeCorrTemplate(LightningModule):
 
     def validation_step(self, batch, batch_idx, mode="val"):
         """Lightning calls this inside the validation loop with the data from the validation dataloader passed in as `batch`."""
-        return self.training_step(batch, batch_idx, mode=mode)
-
+        return self.validation_step_single(batch, batch_idx, mode=mode)
+        
     def log_test_step(self):
         logs_step = {k: to_numpy(v) for k, v in {**self.tracks}.items()}
         getattr(self, f"test_logs", None).append(logs_step)
@@ -189,7 +237,7 @@ class ShapeCorrTemplate(LightningModule):
         self.test_logs = []
         self.hparams.mode = 'test'
     
-    def on_epoch_end_generic(self):
+    def on_epoch_end_generic(self, val=False):
         logs = getattr(self, f"{self.hparams.mode}_logs", None)
         dict_of_lists = {k: [dic[k] for dic in logs] for k in logs[0]}
         for key, lst in dict_of_lists.items():
@@ -201,15 +249,18 @@ class ShapeCorrTemplate(LightningModule):
             self.tracks[name] = val
 
             self.logger.experiment.add_scalar(name, val, self.current_epoch)
+            if val:
+                if 'auc' in name or 'acc_mean_dist' in name:
+                    print(f'Epoch: {self.current_epoch} - {name} - Val: {val:.4f}')
 
 
         return dict_of_lists
 
-    def on_train_epoch_end(self, outputs) -> None:
+    def on_train_epoch_end(self, outputs=None) -> None:
         self.on_epoch_end_generic()
 
     def on_validation_epoch_end(self) -> None:
-        self.on_epoch_end_generic()
+        self.on_epoch_end_generic(val=True)
 
 
 
@@ -281,7 +332,7 @@ class ShapeCorrTemplate(LightningModule):
             label,
             input2.squeeze(0)
         )
-        dist = data_dict['second']['dist']
+        dist = data_dict['second']['dist'].squeeze(0)
         
         return label,pinput1,input2,ratio_list,soft_labels, dist
 
@@ -336,9 +387,9 @@ class ShapeCorrTemplate(LightningModule):
         pred_hit = p.squeeze(0).argmax(-1)
         # TODO: confirm the metric to measure the dist(To be coherent now, we still use the geodesic mean error)
         # target_dist = square_distance(input2.squeeze(0), input2.squeeze(0)) 
-        track_dict["acc_mean_dist"] = dist[pred_hit,hit].mean().item()
+        track_dict[f"acc_mean_dist"] = dist[pred_hit,hit].mean().item()
         if(getattr(hparams,'dataset_name','') == 'tosca' or (hparams.mode == 'test' and hparams.test_on_tosca)):
-            track_dict["acc_mean_dist"] /= 3 # TOSCA is not scaled to meters as the other datasets. /3 scales the shapes to be coherent with SMAL (animals as well)
+            track_dict[f"acc_mean_dist"] /= 3 # TOSCA is not scaled to meters as the other datasets. /3 scales the shapes to be coherent with SMAL (animals as well)
         return track_dict
 
 
@@ -347,9 +398,9 @@ class ShapeCorrTemplate(LightningModule):
         corr_tensor = ShapeCorrTemplate._prob_to_corr_test(p)
 
         acc_000 = ShapeCorrTemplate._label_ACC_percentage_for_inference(corr_tensor, label.unsqueeze(0))
-        track_dict["acc_0.00"] = acc_000
+        track_dict[f"acc_0.00"] = acc_000
         for idx,ratio in enumerate(ratio_list):
-            track_dict["acc_" + str(ratio)] = ShapeCorrTemplate._label_ACC_percentage_for_inference(corr_tensor, soft_labels[f"{ratio}"].unsqueeze(0)).item()
+            track_dict[f"acc_" + str(ratio)] = ShapeCorrTemplate._label_ACC_percentage_for_inference(corr_tensor, soft_labels[f"{ratio}"].unsqueeze(0)).item()
         return track_dict
     
     @staticmethod
@@ -365,7 +416,7 @@ class ShapeCorrTemplate(LightningModule):
             fig (matplotlib.pyplot.figure): pck curve.
             pcks (np.ndarray): pcks.
         """
-        geo_err = track_dict["acc_mean_dist"].cpu().numpy()
+        geo_err = np.array(track_dict["acc_mean_dist"])
         assert threshold > 0 and steps > 0
         geo_err = np.ravel(geo_err)
         thresholds = np.linspace(0., threshold, steps)
@@ -383,7 +434,7 @@ class ShapeCorrTemplate(LightningModule):
         # ax = fig.add_subplot(1, 1, 1)
         # ax.plot(thresholds, pcks, 'r-')
         # ax.set_xlim(0., threshold)
-        track_dict['auc'] = auc
+        track_dict[f'auc'] = auc
         return track_dict
     
 
