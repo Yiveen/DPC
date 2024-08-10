@@ -13,6 +13,7 @@
 *.gif
 *.html
 *.zip
+third_party/*
 tune_*/*
 **/output/*
 output/*

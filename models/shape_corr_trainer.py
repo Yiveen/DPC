@@ -15,6 +15,9 @@ from torch import Tensor
 
 from utils import argparse_init, switch_functions
 
+import numpy as np
+import matplotlib.pyplot as plt
+
 
 class ShapeCorrTemplate(LightningModule):
     """
@@ -29,9 +32,9 @@ class ShapeCorrTemplate(LightningModule):
         for k,v in load_hparams.items():
             setattr(self.hparams,k,v)
 
-        self.train_accuracy = AccuracyAssumeEye()
-        self.val_accuracy = AccuracyAssumeEye()
-        self.test_accuracy = AccuracyAssumeEye()
+        # self.train_accuracy = AccuracyAssumeEye()
+        # self.val_accuracy = AccuracyAssumeEye()
+        # self.test_accuracy = AccuracyAssumeEye()
         self.losses = {}
         self.tracks = {}
 
@@ -255,6 +258,9 @@ class ShapeCorrTemplate(LightningModule):
             choices=["l1", "l2", "softmax", "no_normalize"],
             help="The way to normalize neighbors similarity",
         )
+        
+        parser.add_argument("--num_neighs", type=int, default=40, help="Num of nearest neighbors to use")
+
 
         return parser
 
@@ -266,17 +272,18 @@ class ShapeCorrTemplate(LightningModule):
             pinput1 = data_dict['src_flat']
             input2 = data_dict['tgt_flat']
         else:
-            pinput1 = data_dict['source']['pos']
-            input2 = data_dict['target']['pos']
-            label = matrix_map_from_corr_map(data_dict['gt_map'].squeeze(0),pinput1.squeeze(0),input2.squeeze(0))
+            pinput1 = data_dict['first']['verts']
+            input2 = data_dict['second']['verts']
+            label = matrix_map_from_corr_map(data_dict['first']['corr'].squeeze(0),pinput1.squeeze(0),input2.squeeze(0))
 
 
         ratio_list, soft_labels = PointCloudDataset.extract_soft_labels_per_pair(
             label,
             input2.squeeze(0)
         )
+        dist = data_dict['second']['dist']
         
-        return label,pinput1,input2,ratio_list,soft_labels
+        return label,pinput1,input2,ratio_list,soft_labels, dist
 
     @staticmethod
     def compute_acc(label, ratio_list, soft_labels, p,input2,track_dict={},hparams=Namespace()):
@@ -284,6 +291,7 @@ class ShapeCorrTemplate(LightningModule):
 
         hit = label.argmax(-1).squeeze(0)
         pred_hit = p.squeeze(0).argmax(-1)
+        # TODO: confirm the metric to measure the dist(To be coherent now, we still use the geodesic mean error)
         target_dist = square_distance(input2.squeeze(0), input2.squeeze(0)) 
         track_dict["acc_mean_dist"] = target_dist[pred_hit,hit].mean().item()
         if(getattr(hparams,'dataset_name','') == 'tosca' or (hparams.mode == 'test' and hparams.test_on_tosca)):
@@ -321,4 +329,61 @@ class ShapeCorrTemplate(LightningModule):
                 c[bsize][each_row][idx[bsize][each_row]] = 1.0
 
         return c
+    
+    @staticmethod
+    def calculate_geodesic_error(label, p, dist, track_dict={},hparams=Namespace()):
+        hit = label.argmax(-1).squeeze(0)
+        pred_hit = p.squeeze(0).argmax(-1)
+        # TODO: confirm the metric to measure the dist(To be coherent now, we still use the geodesic mean error)
+        # target_dist = square_distance(input2.squeeze(0), input2.squeeze(0)) 
+        track_dict["acc_mean_dist"] = dist[pred_hit,hit].mean().item()
+        if(getattr(hparams,'dataset_name','') == 'tosca' or (hparams.mode == 'test' and hparams.test_on_tosca)):
+            track_dict["acc_mean_dist"] /= 3 # TOSCA is not scaled to meters as the other datasets. /3 scales the shapes to be coherent with SMAL (animals as well)
+        return track_dict
+
+
+    @staticmethod
+    def compute_acc_dpc(label, ratio_list, soft_labels, p,track_dict={}):
+        corr_tensor = ShapeCorrTemplate._prob_to_corr_test(p)
+
+        acc_000 = ShapeCorrTemplate._label_ACC_percentage_for_inference(corr_tensor, label.unsqueeze(0))
+        track_dict["acc_0.00"] = acc_000
+        for idx,ratio in enumerate(ratio_list):
+            track_dict["acc_" + str(ratio)] = ShapeCorrTemplate._label_ACC_percentage_for_inference(corr_tensor, soft_labels[f"{ratio}"].unsqueeze(0)).item()
+        return track_dict
+    
+    @staticmethod
+    def plot_pck(track_dict, threshold=0.10, steps=40):
+        """
+        plot pck curve and compute auc.
+        Args:
+            geo_err (np.ndarray): geodesic error list.
+            threshold (float, optional): threshold upper bound. Default 0.15.
+            steps (int, optional): number of steps between [0, threshold]. Default 30.
+        Returns:
+            auc (float): area under curve.
+            fig (matplotlib.pyplot.figure): pck curve.
+            pcks (np.ndarray): pcks.
+        """
+        geo_err = track_dict["acc_mean_dist"].cpu().numpy()
+        assert threshold > 0 and steps > 0
+        geo_err = np.ravel(geo_err)
+        thresholds = np.linspace(0., threshold, steps)
+        pcks = []
+        for i in range(thresholds.shape[0]):
+            thres = thresholds[i]
+            pck = np.mean((geo_err <= thres).astype(float))
+            pcks.append(pck)
+        pcks = np.array(pcks)
+        # compute auc
+        auc = np.trapz(pcks, np.linspace(0., 1., steps))
+
+        # # display figure
+        # fig = plt.figure()
+        # ax = fig.add_subplot(1, 1, 1)
+        # ax.plot(thresholds, pcks, 'r-')
+        # ax.set_xlim(0., threshold)
+        track_dict['auc'] = auc
+        return track_dict
+    
 

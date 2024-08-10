@@ -23,8 +23,9 @@ from models.sub_models.dgcnn.dgcnn import DGCNN as non_geo_DGCNN
 
 from utils.argparse_init import str2bool
 
-from ChamferDistancePytorch.chamfer3D import dist_chamfer_3D
- 
+# from ChamferDistancePytorch.chamfer3D import dist_chamfer_3D
+from pytorch3d.loss import chamfer_distance
+from pytorch3d.structures import Pointclouds
 
 
 class GroupingOperation(torch.autograd.Function):
@@ -42,7 +43,17 @@ class GroupingOperation(torch.autograd.Function):
         return grad_features, None
 
 grouping_operation = GroupingOperation.apply
+# class GroupingOperation(torch.nn.Module):
+#     def __init__(self, nn):
+#         super().__init__()
+#         self.conv = PointNetConv(nn, add_self_loops=False)
 
+#     def forward(self, x, pos, batch):
+#         x_dst = None if x is None else x[idx]
+#         x = self.conv((x, x_dst), (pos, pos[idx]), edge_index)
+#         return x
+
+# grouping_operation = GroupingOperation
 class DeepPointCorr(ShapeCorrTemplate):
     
     def __init__(self, hparams, **kwargs):
@@ -50,11 +61,9 @@ class DeepPointCorr(ShapeCorrTemplate):
         super(DeepPointCorr, self).__init__(hparams, **kwargs)
         self.encoder = DGCNN_MODULAR(self.hparams, use_inv_features=self.hparams.use_inv_features)
 
-        self.chamfer_dist_3d = dist_chamfer_3D.chamfer_3DDist()
-
-        self.accuracy_assume_eye = AccuracyAssumeEye()
-        self.accuracy_assume_eye_soft_0p01 = AccuracyAssumeEyeSoft(top_k=int(0.01 * self.hparams.num_points))
-        self.accuracy_assume_eye_soft_0p05 = AccuracyAssumeEyeSoft(top_k=int(0.05 * self.hparams.num_points))
+        # self.accuracy_assume_eye = AccuracyAssumeEye()
+        # self.accuracy_assume_eye_soft_0p01 = AccuracyAssumeEyeSoft(top_k=int(0.01 * self.hparams.num_points))
+        # self.accuracy_assume_eye_soft_0p05 = AccuracyAssumeEyeSoft(top_k=int(0.05 * self.hparams.num_points))
 
 
     def chamfer_loss(self, pos1, pos2):
@@ -63,9 +72,14 @@ class DeepPointCorr(ShapeCorrTemplate):
 
         if not pos2.is_cuda:
             pos2 = pos2.cuda()
+            
+        source_pcd = Pointclouds(points=pos1)
+        target_pcd = Pointclouds(points=pos2)
 
-        dist1, dist2, idx1, idx2 = self.chamfer_dist_3d(pos1, pos2)
-        loss = torch.mean(dist1) + torch.mean(dist2)
+        loss, _ = chamfer_distance(source_pcd, target_pcd)
+
+        # dist1, dist2, idx1, idx2 = self.chamfer_dist_3d(pos1, pos2)
+        # loss = torch.mean(dist1) + torch.mean(dist2)
 
         return loss
 
@@ -76,7 +90,7 @@ class DeepPointCorr(ShapeCorrTemplate):
 
     def compute_deep_features(self, shape):
         shape["dense_output_features"] = self.encoder.forward_per_point(
-            shape["pos"], start_neighs=shape["neigh_idxs"]
+            shape['verts'], start_neighs=shape["neigh_idxs"]
         )
         return shape
 
@@ -95,8 +109,8 @@ class DeepPointCorr(ShapeCorrTemplate):
             get_s_t_neighbors(self.hparams.k_for_cross_recon, P_normalized, sim_normalization=self.hparams.sim_normalization)
 
         # cross reconstruction
-        source["cross_recon"], source["cross_recon_hard"] = self.reconstruction(source["pos"], target["cross_nn_idx"], target["cross_nn_weight"], self.hparams.k_for_cross_recon)
-        target["cross_recon"], target["cross_recon_hard"] = self.reconstruction(target["pos"], source["cross_nn_idx"], source["cross_nn_weight"], self.hparams.k_for_cross_recon)
+        source["cross_recon"], source["cross_recon_hard"] = self.reconstruction(source['verts'], target["cross_nn_idx"], target["cross_nn_weight"], self.hparams.k_for_cross_recon)
+        target["cross_recon"], target["cross_recon_hard"] = self.reconstruction(target['verts'], source["cross_nn_idx"], source["cross_nn_weight"], self.hparams.k_for_cross_recon)
 
         return source, target, P_normalized, temperature
 
@@ -119,7 +133,7 @@ class DeepPointCorr(ShapeCorrTemplate):
             get_s_t_neighbors(self.hparams.k_for_self_recon + 1, P_self, sim_normalization=self.hparams.sim_normalization, s_only=True, ignore_first=True,nn_idx=nn_idx)
 
         # self reconstruction
-        shape["self_recon"], _ = self.reconstruction(shape["pos"], shape["self_nn_idx"], shape["self_nn_weight"], self.hparams.k_for_self_recon)
+        shape["self_recon"], _ = self.reconstruction(shape['verts'], shape["self_nn_idx"], shape["self_nn_weight"], self.hparams.k_for_self_recon)
 
         return shape, P_self
 
@@ -171,35 +185,33 @@ class DeepPointCorr(ShapeCorrTemplate):
 
     def forward(self, data):
 
-        for shape in ["source", "target"]:
+        for shape in ['first', 'second']:
             data[shape]["edge_index"] = [
-                knn(data[shape]["pos"][i], data[shape]["pos"][i], self.hparams.num_neighs,)
-                for i in range(data[shape]["pos"].shape[0])
+                knn(data[shape]['verts'][i], data[shape]['verts'][i], self.hparams.num_neighs,)
+                for i in range(data[shape]['verts'].shape[0])
             ]
             data[shape]["neigh_idxs"] = torch.stack(
-                [data[shape]["edge_index"][i][1].reshape(data[shape]["pos"].shape[1], -1) for i in range(data[shape]["pos"].shape[0])]
+                [data[shape]["edge_index"][i][1].reshape(data[shape]['verts'].shape[1], -1) for i in range(data[shape]['verts'].shape[0])]
             )
 
         # dense features, similarity, and cross reconstruction
-        data["source"], data["target"], data["P_normalized"], data["temperature"] = self.forward_source_target(data["source"], data["target"])
-
-
+        data['first'], data['second'], data["P_normalized"], data["temperature"] = self.forward_source_target(data['first'], data['second'])
 
         # cross reconstruction losses
-        self.losses[f"source_cross_recon_loss"] = self.hparams.cross_recon_lambda * self.chamfer_loss(data["source"]["pos"], data["source"]["cross_recon"])
-        self.losses[f"target_cross_recon_loss"] =self.hparams.cross_recon_lambda * self.chamfer_loss(data["target"]["pos"], data["target"]["cross_recon"])
+        self.losses[f"source_cross_recon_loss"] = self.hparams.cross_recon_lambda * self.chamfer_loss(data['first']['verts'], data['first']["cross_recon"])
+        self.losses[f"target_cross_recon_loss"] =self.hparams.cross_recon_lambda * self.chamfer_loss(data['second']['verts'], data['second']["cross_recon"])
 
         # self reconstruction
         if self.hparams.use_self_recon:
-            _, P_self_source = self.forward_shape(data["source"])
-            _, P_self_target = self.forward_shape(data["target"])
+            _, P_self_source = self.forward_shape(data['first'])
+            _, P_self_target = self.forward_shape(data['second'])
 
             # self reconstruction losses
-            data["source"]["self_recon_loss_unscaled"] = self.chamfer_loss(data["source"]["pos"], data["source"]["self_recon"])
-            data["target"]["self_recon_loss_unscaled"] = self.chamfer_loss(data["target"]["pos"], data["target"]["self_recon"])
+            data['first']["self_recon_loss_unscaled"] = self.chamfer_loss(data['first']['verts'], data['first']["self_recon"])
+            data['second']["self_recon_loss_unscaled"] = self.chamfer_loss(data['second']['verts'], data['second']["self_recon"])
 
-            self.losses[f"source_self_recon_loss"] = self.hparams.self_recon_lambda * data["source"]["self_recon_loss_unscaled"]
-            self.losses[f"target_self_recon_loss"] = self.hparams.self_recon_lambda * data["target"]["self_recon_loss_unscaled"]
+            self.losses[f"source_self_recon_loss"] = self.hparams.self_recon_lambda * data['first']["self_recon_loss_unscaled"]
+            self.losses[f"target_self_recon_loss"] = self.hparams.self_recon_lambda * data['second']["self_recon_loss_unscaled"]
 
         if self.hparams.compute_perm_loss:
             data[f"perm_loss_fwd_unscaled"] = self.get_perm_loss(data["P_normalized"])
@@ -213,9 +225,9 @@ class DeepPointCorr(ShapeCorrTemplate):
 
         if self.hparams.compute_neigh_loss and self.hparams.neigh_loss_lambda > 0.0:
             data[f"neigh_loss_fwd_unscaled"] = \
-                self.get_neighbor_loss(data["source"]["pos"], data["source"]["neigh_idxs"], data["target"]["cross_recon"], self.hparams.k_for_cross_recon)
+                self.get_neighbor_loss(data['first']['verts'], data['first']["neigh_idxs"], data['second']["cross_recon"], self.hparams.k_for_cross_recon)
             data[f"neigh_loss_bac_unscaled"] = \
-                self.get_neighbor_loss(data["target"]["pos"], data["target"]["neigh_idxs"], data["source"]["cross_recon"], self.hparams.k_for_cross_recon)
+                self.get_neighbor_loss(data['second']['verts'], data['second']["neigh_idxs"], data['first']["cross_recon"], self.hparams.k_for_cross_recon)
 
             self.losses[f"neigh_loss_fwd"] = self.hparams.neigh_loss_lambda * data[f"neigh_loss_fwd_unscaled"]
             self.losses[f"neigh_loss_bac"] = self.hparams.neigh_loss_lambda * data[f"neigh_loss_bac_unscaled"]
@@ -229,17 +241,19 @@ class DeepPointCorr(ShapeCorrTemplate):
         self.hparams.mode = 'test'
         self.hparams.batch_idx=batch_idx
         
-        label, pinput1, input2, ratio_list, soft_labels = self.extract_labels_for_test(test_batch)
+        label, pinput1, input2, ratio_list, soft_labels, dist = self.extract_labels_for_test(test_batch)
 
-        source = {"pos": pinput1, "id": self.batch['source']["id"]}
-        target = {"pos": input2, "id": self.batch['target']["id"]}
-        batch = {"source": source, "target": target}
+        source = {'verts': pinput1, "id": self.batch['first']['name']}
+        target = {'verts': input2, "id": self.batch['second']['name']}
+        batch = {'first': source, 'second': target}
         batch = self(batch)
         p = batch["P_normalized"].clone()
 
 
-
-        _ = self.compute_acc(label, ratio_list, soft_labels, p,input2,track_dict=self.tracks,hparams=self.hparams)
+        _ = self.calculate_geodesic_error(label, p, dist, track_dict=self.tracks, hparams=self.hparams)
+        _ = self.compute_acc_dpc(label, ratio_list, soft_labels, p, track_dict=self.tracks)
+        _ = self.plot_pck(self.tracks)
+        # _ = self.compute_acc(label, ratio_list, soft_labels, p,input2,track_dict=self.tracks,hparams=self.hparams)
 
         self.log_test_step()
         if self.vis_iter():
@@ -297,13 +311,13 @@ class DeepPointCorr(ShapeCorrTemplate):
 
 
     def track_metrics(self, data):
-        self.tracks[f"source_cross_recon_error"] = self.chamfer_loss(data["source"]["pos"], data["source"]["cross_recon_hard"])
-        self.tracks[f"target_cross_recon_error"] = self.chamfer_loss(data["target"]["pos"], data["target"]["cross_recon_hard"])
+        self.tracks[f"source_cross_recon_error"] = self.chamfer_loss(data['first']['verts'], data['first']["cross_recon_hard"])
+        self.tracks[f"target_cross_recon_error"] = self.chamfer_loss(data['second']['verts'], data['second']["cross_recon_hard"])
 
 
         if self.hparams.use_self_recon:
-            self.tracks[f"source_self_recon_loss_unscaled"] = data["source"]["self_recon_loss_unscaled"]
-            self.tracks[f"target_self_recon_loss_unscaled"] = data["target"]["self_recon_loss_unscaled"]
+            self.tracks[f"source_self_recon_loss_unscaled"] = data['first']["self_recon_loss_unscaled"]
+            self.tracks[f"target_self_recon_loss_unscaled"] = data['second']["self_recon_loss_unscaled"]
 
 
         if self.hparams.compute_neigh_loss and self.hparams.neigh_loss_lambda > 0.0:
@@ -312,10 +326,10 @@ class DeepPointCorr(ShapeCorrTemplate):
 
         # nearest neighbors hit accuracy
         source_pred = data["P_normalized"].argmax(dim=2)
-        target_neigh_idxs = data["target"]["neigh_idxs"]
+        target_neigh_idxs = data['second']["neigh_idxs"]
 
         target_pred = data["P_normalized"].argmax(dim=1)
-        source_neigh_idxs = data["source"]["neigh_idxs"]
+        source_neigh_idxs = data['first']["neigh_idxs"]
 
         # uniqueness (number of unique predictions)
         self.tracks[f"uniqueness_fwd"] = uniqueness(source_pred)

@@ -124,7 +124,7 @@ def init_parse_argparse_default_params(parser, dataset_name=None, arch=None):
 
     ## Input Output parameters
     parser.add_argument(
-        "--default_root_dir", default=os.path.join(os.getcwd(), "output", task_name), help="The path to store this run output"
+        "--default_root_dir", default=os.path.join(os.getcwd(), "DPC/output", task_name), help="The path to store this run output"
     )
     parser.add_argument(
         "--show_vis", type=str2bool, nargs="?", const=True, default=False, help="If true logs visualizations (run time)"
@@ -205,7 +205,7 @@ def init_parse_argparse_default_params(parser, dataset_name=None, arch=None):
 
     parser.add_argument(
         "--gpus",
-        default="0",type=str
+        default="1",type=str
     )
     parser.add_argument("--num_data_workers", default=0, type=int, help="for parallel data load")
     parser.add_argument("--config_file", type=str, help="Configuration file yaml file")
@@ -231,6 +231,13 @@ def init_parse_argparse_default_params(parser, dataset_name=None, arch=None):
         default=1,
         help="For sanity check of the network, will randomlly permute the points and check for same results",
     )
-
+    
+    parser.add_argument(
+        "--opt",
+        type=str,
+        default=None,
+        required=True,
+        help="Path to dataset ymal file.",
+    )
 
     return {"dataset_name": dataset_name, "task_name": task_name, "arch": architecture}

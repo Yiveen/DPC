@@ -9,7 +9,7 @@ import numpy as np
 
 
 def log_prefix(model,idx=0):
-    return "_".join([model.hparams.dataset_name, model.hparams.mode, "e%02d" % model.current_epoch, "b%02d" % model.hparams.batch_idx, "s%02d" % model.batch["source"]["id"][idx], "t%02d" % model.batch["target"]["id"][idx], model.hparams.arch])
+    return "_".join([model.hparams.dataset_name, model.hparams.mode, "e%02d" % model.current_epoch, "b%02d" % model.hparams.batch_idx, "s%02d" % model.batch["first"]["name"][idx], "t%02d" % model.batch["second"]["name"][idx], model.hparams.arch])
 
 def visualize_P(model, batch, mode, extra_text, scalar_maps, source_face, source_vert, target_face, target_vert, P, mesh_or_pc, 
     fwd_or_bac, horiz_space=0.1, grayed_indices=None, target_grayed=None, idx=None, 
@@ -71,8 +71,8 @@ def visualize_pcs_same_fig(model, mode, extra_text, pcs, pcs_color, idx=None, im
 
 
 def visualize_reconstructions(model, batch, mode="train"):
-    source = batch["source"]
-    target = batch["target"]
+    source = batch["first"]
+    target = batch["second"]
 
     s_pos, s_cross_recon, s_cross_recon_hard = source["pos"], source["cross_recon"], source["cross_recon_hard"]
 
@@ -116,7 +116,7 @@ def visualize_reconstructions(model, batch, mode="train"):
 
     pcs_color = [pos_color, pcs_range_color]
     pcs = [s_pos, s_pcs_range]  # hack: add pcs_range as a pc to have the same range for different plots
-    visualize_pcs_same_fig(model, mode, "source", pcs, pcs_color, img_log_name='', write_image=write_image, write_html=write_html)
+    visualize_pcs_same_fig(model, mode, "first", pcs, pcs_color, img_log_name='', write_image=write_image, write_html=write_html)
 
     pcs_color = [cross_recon_color, pcs_range_color]
     pcs = [s_cross_recon, s_pcs_range]  # hack: add pcs_range as a pc to have the same range for different plots
@@ -146,7 +146,7 @@ def visualize_reconstructions(model, batch, mode="train"):
 
     pcs_color = [pos_color, pcs_range_color]
     pcs = [t_pos, t_pcs_range]  # hack: add pcs_range as a pc to have the same range for different plots
-    visualize_pcs_same_fig(model, mode, "target", pcs, pcs_color, img_log_name='', write_image=write_image, write_html=write_html)
+    visualize_pcs_same_fig(model, mode, "second", pcs, pcs_color, img_log_name='', write_image=write_image, write_html=write_html)
 
     pcs_color = [cross_recon_color, pcs_range_color]
     pcs = [t_cross_recon, t_pcs_range]  # hack: add pcs_range as a pc to have the same range for different plots
@@ -176,8 +176,8 @@ def visualize_reconstructions(model, batch, mode="train"):
 
 
 def visualize_pair_corr(model, batch, mode="train", extra_text="", scalar_maps=None):
-    source = batch["source"]
-    target = batch["target"]
+    source = batch["first"]
+    target = batch["second"]
     source_comf = batch["P_normalized"].max(2)[0]
     target_comf = batch["P_normalized"].max(1)[0]
     none_face_list = [None for i in range(source["pos"].shape[0])]

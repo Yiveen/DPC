@@ -1,10 +1,10 @@
-from pytorch_lightning.metrics import Accuracy
+from torchmetrics import Accuracy
 import torch
 import torch.nn.functional as F
 
 class AccuracyAssumeEye(Accuracy):
     def __init__(self):
-        super().__init__()
+        super().__init__(task="multiclass")
 
     def update(self, P: torch.Tensor, dim=1):
         preds = P.argmax(dim)
@@ -16,7 +16,7 @@ class AccuracyAssumeEye(Accuracy):
 
 class AccuracyAssumeEyeSoft(Accuracy):
     def __init__(self, top_k):
-        super().__init__(top_k=top_k)
+        super().__init__(task="multiclass", top_k=top_k)
 
     def update(self, P: torch.Tensor, dim=1, normalize=True):
         if normalize:

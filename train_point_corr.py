@@ -40,7 +40,7 @@ def main():
     model_class_pointer = switch_functions.model_class_pointer(eager_flags["task_name"], eager_flags["arch"])
     parser = model_class_pointer.add_model_specific_args(parser, eager_flags["task_name"], eager_flags["dataset_name"])
     hparams = parser.parse_args()
-
+    
     return main_train(model_class_pointer, hparams, parser)
 
 
@@ -72,7 +72,6 @@ def main_train(model_class_pointer, hparams,parser):
     )
 
 
-
     trainer = pl.Trainer(
         callbacks=[checkpoint_callback],
 
@@ -85,7 +84,7 @@ def main_train(model_class_pointer, hparams,parser):
         gradient_clip_val=hparams.gradient_clip_val,
         benchmark=True,  
         gpus=str(hparams.gpus) if str(hparams.gpus)!="-1" else None,  # if not hparams.DEBUG_MODE else 1,
-        distributed_backend="dp" if hparams.gpus!="-1" else None,  # if not hparams.DEBUG_MODE else 'sp',
+        # distributed_backend="dp" if hparams.gpus!="-1" else None,  # if not hparams.DEBUG_MODE else 'sp',
         num_sanity_val_steps=hparams.num_sanity_val_steps,
         val_check_interval=hparams.val_check_interval,  # how many times(0.25=4) to run validation each training loop
         limit_train_batches=hparams.limit_train_batches,  # how much of the training data to train on

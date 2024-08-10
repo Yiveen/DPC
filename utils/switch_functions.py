@@ -1,12 +1,95 @@
 """For all general switch functions based on flags."""
 
-from data.point_cloud_db.tosca import TOSCA
-from data.point_cloud_db.smal import SMAL
-from data.point_cloud_db.surreal import surreal
+"""For all general switch functions based on flags."""
+import sys
+import os
+
+# from data.point_cloud_db.tosca import TOSCA
+# from data.point_cloud_db.smal import SMAL
+# from data.point_cloud_db.surreal import surreal
 from torch.utils.data.dataset import random_split
-from torch.utils.data import DataLoader
+# from torch.utils.data import DataLoader
+from torch_geometric.loader import DataLoader
 import torch
 import torch.nn.functional as F
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, "../../"))
+sys.path.append(project_root)
+
+from copy import deepcopy
+from ulrssm.datasets import build_dataset
+
+import argparse
+import random
+import yaml
+from collections import OrderedDict
+from os import path as osp
+
+def ordered_yaml():
+    """Support OrderedDict for yaml.
+
+    Returns:
+        yaml Loader and Dumper.
+    """
+    try:
+        from yaml import CDumper as Dumper
+        from yaml import CLoader as Loader
+    except ImportError:
+        from yaml import Dumper, Loader
+
+    _mapping_tag = yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG
+
+    def dict_representer(dumper, data):
+        return dumper.represent_dict(data.items())
+
+    def dict_constructor(loader, node):
+        return OrderedDict(loader.construct_pairs(node))
+
+    Dumper.add_representer(OrderedDict, dict_representer)
+    Loader.add_constructor(_mapping_tag, dict_constructor)
+    return Loader, Dumper
+
+
+def parse(opt_path):
+    """Parse option file.
+
+    Args:
+        opt_path (str): Option file path.
+        root_path (str): Root path.
+        is_train (str): Indicate whether in training or not. Default True.
+
+    Returns:
+        (dict): Options.
+    """
+    # read config yaml file
+    with open(opt_path, mode='r') as f:
+        Loader, _ = ordered_yaml()
+        opt = yaml.load(f, Loader=Loader)
+    return opt
+
+def create_train_val_dataset(opt):
+    '''
+    re-use this function from ULRSSM here for simplification
+    '''
+    
+    train_set, val_set = None, None
+    # create train and val datasets
+    for dataset_name, dataset_opt in opt['datasets'].items():
+        if isinstance(dataset_opt, int):  # batch_size, num_worker
+            continue
+        if dataset_name.startswith('train'):
+            if train_set is None:
+                train_set = build_dataset(dataset_opt)
+            else:
+                train_set += build_dataset(dataset_opt)
+        elif dataset_name.startswith('val') or dataset_name.startswith('test'):
+            if val_set is None:
+                val_set = build_dataset(dataset_opt)
+            else:
+                val_set += build_dataset(dataset_opt)
+    return train_set, val_set
+                
 
 def model_class_pointer(task_name, model_name):
     """Get pointer to class base on flags.
@@ -52,44 +135,10 @@ def load_dataset(params):
     Args:
         params (dict): The hyper-parameters
     """
-    from data.point_cloud_db.shrec import SHREC
+    train_dataset,val_dataset = create_train_val_dataset(parse(params.opt))
 
-    if params.dataset_name in ["shrec"]:
-        dataset = SHREC(params,"train")
-        train_size = int(len(dataset) * params.train_val_split)
-        train_dataset,val_dataset = random_split(dataset, [train_size, len(dataset) - train_size])
-        test_dataset = SHREC(params,"test")
-        return train_dataset,val_dataset,test_dataset
+    return train_dataset, val_dataset, val_dataset #current use val as test set
 
-    if params.dataset_name in ["smal"]:
-        dataset = SMAL(params,"train")
-        train_size = int(len(dataset) * params.train_val_split)
-        train_dataset,val_dataset = random_split(dataset, [train_size, len(dataset) - train_size])
-        test_dataset = SMAL(params,"test")
-
-        if(params.test_on_tosca):
-            test_dataset = TOSCA(params,"test")
-
-        return train_dataset,val_dataset,test_dataset
-
-    if params.dataset_name in ["tosca"]:
-        dataset = TOSCA(params,"train")
-        train_size = int(len(dataset) * params.train_val_split)
-        train_dataset,val_dataset = random_split(dataset, [train_size, len(dataset) - train_size])
-        test_dataset = TOSCA(params,"test")
-        return train_dataset,val_dataset,test_dataset
-
-    if params.dataset_name in ["surreal"]:
-        train_dataset = surreal(params,"train")
-        val_dataset = surreal(params,"val")
-        if(params.test_on_shrec):
-            test_dataset = SHREC(params,"test")
-        else:
-            test_dataset = surreal(params,"test")
-
-        return train_dataset,val_dataset, test_dataset
-
-    raise Exception("No match for task_name in load_dataset")
 
 
 def choose_optimizer(params, network_parameters):
@@ -172,4 +221,3 @@ def normalize_P(P, p_normalization, dim=None):
     if p_normalization == "softmax":
         return F.softmax(P, dim=dim)
     raise NameError
-

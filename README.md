@@ -15,14 +15,6 @@ This repo is the implementation of [**DPC**](https://arxiv.org/abs/2110.08636). 
 ![Cross Similarity](./data/images/cross_similarity.png)
 
 
-
-## Tested environment
-- Python 3.6
-- PyTorch 1.6
-- CUDA 10.2
-
-Lower CUDA and PyTorch versions should work as well.
-
 &nbsp;
 ## Contents
 - [Installation](#installation)
@@ -33,43 +25,30 @@ Lower CUDA and PyTorch versions should work as well.
 
 &nbsp;
 # Installation
-Please follow `installation.sh` or simply run
+Tested using isolated environment of ULRSSM. Using CUDA version 11.3.(Higher version of CUDA like 11.8 may also work(only for installing the pointnet2.))
+
+Please follow `installation.sh`, I have updated some packages version.
 ```
+conda create -n DPC python=3.8
+conda activate DPC
+# You need to check the installation content to adopt some specific commands
 bash installation.sh 
+
+# install pointnet2
+mkdir third_party
+cd third_party
+git clone https://github.com/erikwijmans/Pointnet2_PyTorch.git
+cd Pointnet2_PyTorch
+# only need this
+pip install ./pointnet2_ops_lib/.
 ```
-&nbsp;
-
-# Datasets
-The method was evaluated on:
-* SURREAL
-  * 230k shapes (DPC uses the first 2k).
-  * [Dataset website](https://www.di.ens.fr/willow/research/surreal/data/)
-  * This code downloads and preprocesses SURREAL automatically.
-
-* SHREC’19
-  * 44 Human scans.
-  * [Dataset website](http://3dor2019.ge.imati.cnr.it/shrec-2019/)
-  * This code downloads and preprocesses SURREAL automatically.
-
-* SMAL
-  * 10000 animal models (2000 models per animal, 5 animals).
-  * [Dataset website](https://smal.is.tue.mpg.de/)
-  * Due to licencing concerns, you should register to [SMAL](https://smal.is.tue.mpg.de/) and download the dataset.
-  * You should follow data/generate_smal.md after downloading the dataset.
-  * To ease the usage of this benchmark, the processed dataset can be downloaded from [here](https://mailtauacil-my.sharepoint.com/:f:/g/personal/dvirginzburg_mail_tau_ac_il/Ekm37j0fi71Fn305v9nmXHABCSc1mWFa17uAc2jOngcyTQ?e=Ns2InB). Please extract and put under `data/datasets/smal`
-
-* TOSCA
-  * 41 Animal figures.
-  * [Dataset website](http://tosca.cs.technion.ac.il/book/resources_data.html)
-  * This code downloads and preprocesses TOSCA automatically.
-  * To ease the usage of this benchmark, the processed dataset can be downloaded from [here](https://mailtauacil-my.sharepoint.com/:f:/g/personal/dvirginzburg_mail_tau_ac_il/EoMgplq-XqlGpl6K6lW6C8gBCxfq2gWXQ4f94xchF3dc9g?e=USid0X). Please extract and put under `data/datasets/tosca`
 
 &nbsp;
 # Training
 
-For training run
+For training run(Have embeded the ULRSSM dataset to DPC structure!!)
 ``` 
-python train_point_corr.py --dataset_name <surreal/tosca/shrec/smal>
+python DPC/train_point_corr.py  --opt config/config_dpc/dpc_example.yaml 
 ```
 The code is based on [PyTorch-Lightning](https://pytorch-lightning.readthedocs.io/en/latest/), all PL [hyperparameters](https://pytorch-lightning.readthedocs.io/en/latest/common/trainer.html) are supported. 
 (`limit_train/val/test_batches, check_val_every_n_epoch` etc.)
@@ -100,7 +79,32 @@ We provide a trained checkpoint repreducing the results provided in the paper, t
 ``` 
 python train_point_corr.py --show_vis --do_train false --resume_from_checkpoint data/ckpts/surreal_ckpt.ckpt
 ```
+&nbsp;
 
+# Datasets
+The method was evaluated on:
+* SURREAL
+  * 230k shapes (DPC uses the first 2k).
+  * [Dataset website](https://www.di.ens.fr/willow/research/surreal/data/)
+  * This code downloads and preprocesses SURREAL automatically.
+
+* SHREC’19
+  * 44 Human scans.
+  * [Dataset website](http://3dor2019.ge.imati.cnr.it/shrec-2019/)
+  * This code downloads and preprocesses SURREAL automatically.
+
+* SMAL
+  * 10000 animal models (2000 models per animal, 5 animals).
+  * [Dataset website](https://smal.is.tue.mpg.de/)
+  * Due to licencing concerns, you should register to [SMAL](https://smal.is.tue.mpg.de/) and download the dataset.
+  * You should follow data/generate_smal.md after downloading the dataset.
+  * To ease the usage of this benchmark, the processed dataset can be downloaded from [here](https://mailtauacil-my.sharepoint.com/:f:/g/personal/dvirginzburg_mail_tau_ac_il/Ekm37j0fi71Fn305v9nmXHABCSc1mWFa17uAc2jOngcyTQ?e=Ns2InB). Please extract and put under `data/datasets/smal`
+
+* TOSCA
+  * 41 Animal figures.
+  * [Dataset website](http://tosca.cs.technion.ac.il/book/resources_data.html)
+  * This code downloads and preprocesses TOSCA automatically.
+  * To ease the usage of this benchmark, the processed dataset can be downloaded from [here](https://mailtauacil-my.sharepoint.com/:f:/g/personal/dvirginzburg_mail_tau_ac_il/EoMgplq-XqlGpl6K6lW6C8gBCxfq2gWXQ4f94xchF3dc9g?e=USid0X). Please extract and put under `data/datasets/tosca`
 
 ![Results](./data/images/dpc_result.png)
 &nbsp;

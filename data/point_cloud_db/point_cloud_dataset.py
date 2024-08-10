@@ -49,6 +49,9 @@ except:
     pass
 
 class PointCloudDataset(Dataset):
+    '''
+    We replace this dataset from ULRSSM. But for reference, you could check the details about DPC dataset.
+    '''
     def __init__(self, params, split='train'):
         
         self.hparams = params
