@@ -252,7 +252,6 @@ class DeepPointCorr(ShapeCorrTemplate):
 
         _ = self.calculate_geodesic_error(label, p, dist, track_dict=self.tracks, hparams=self.hparams)
         _ = self.compute_acc_dpc(label, ratio_list, soft_labels, p, track_dict=self.tracks)
-        _ = self.plot_pck(self.tracks)
         # _ = self.compute_acc(label, ratio_list, soft_labels, p,input2,track_dict=self.tracks,hparams=self.hparams)
 
         self.log_test_step()
@@ -294,7 +293,7 @@ class DeepPointCorr(ShapeCorrTemplate):
             optimizer="adam",
             lr=0.0003,
             weight_decay=5e-4,
-            max_epochs=300,
+            max_epochs=50,
             accumulate_grad_batches=2,
             latent_dim=768,
             DGCNN_latent_dim=512,

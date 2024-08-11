@@ -114,7 +114,7 @@ def init_parse_argparse_default_params(parser, dataset_name=None, arch=None):
         "--test_batch_size", type=int, default=1, help="Number of samples in test batch"
     )
     parser.add_argument(
-        "--max_epochs", default={"complition": 200, "shape_corr": 50}[task_name], type=int, help="Number of epochs to train"
+        "--max_epochs", default=50, type=int, help="Number of epochs to train"
     )
     parser.add_argument(
         "--val_test", default=3, type=int, help="Number of epochs to test geodesic error during validation"

@@ -240,12 +240,17 @@ class ShapeCorrTemplate(LightningModule):
     def on_epoch_end_generic(self, val=False):
         logs = getattr(self, f"{self.hparams.mode}_logs", None)
         dict_of_lists = {k: [dic[k] for dic in logs] for k in logs[0]}
+        dict_of_lists = self.plot_pck(dict_of_lists)
         for key, lst in dict_of_lists.items():
             s = 0
-            for item in lst:
-                s += item.sum()
-            name = f"{self.hparams.mode}/{key}/epoch"
-            val = s / len(lst)
+            if 'auc' not in key:
+                for item in lst:
+                    s += item.sum()
+                name = f"{self.hparams.mode}/{key}/epoch"
+                val = s / len(lst)
+            else:
+                name = f"{self.hparams.mode}/{key}/epoch"
+                val = lst
             self.tracks[name] = val
 
             self.logger.experiment.add_scalar(name, val, self.current_epoch)
@@ -260,6 +265,9 @@ class ShapeCorrTemplate(LightningModule):
         self.on_epoch_end_generic()
 
     def on_validation_epoch_end(self) -> None:
+        self.on_epoch_end_generic(val=True)
+        
+    def on_test_epoch_end(self) -> None:
         self.on_epoch_end_generic(val=True)
 
 
